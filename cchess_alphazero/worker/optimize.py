@@ -21,18 +21,18 @@ from cchess_alphazero.lib.model_helper import load_best_model_weight, save_as_be
 from cchess_alphazero.lib.model_helper import need_to_reload_best_model_weight, save_as_next_generation_model, save_as_best_model
 from cchess_alphazero.environment.env import CChessEnv
 from cchess_alphazero.environment.lookup_tables import Winner, ActionLabelsRed, flip_policy, flip_move
-from cchess_alphazero.lib.tf_util import set_session_config
+
 from cchess_alphazero.lib.web_helper import http_request
 
-from keras.optimizers import SGD
-from keras.callbacks import TensorBoard
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.callbacks import TensorBoard
 # from keras.utils import multi_gpu_model
-import keras.backend as K
+import tensorflow.keras.backend as K
 
 logger = getLogger(__name__)
 
 def start(config: Config):
-    set_session_config(per_process_gpu_memory_fraction=1, allow_growth=True, device_list=config.opts.device_list)
+
     return OptimizeWorker(config).start()
 
 class OptimizeWorker:

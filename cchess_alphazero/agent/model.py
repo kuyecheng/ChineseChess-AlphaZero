@@ -1,3 +1,4 @@
+# -*- coding:utf-8 -*-
 import hashlib
 import json
 import os
@@ -5,13 +6,14 @@ from logging import getLogger
 
 import tensorflow as tf
 
-from keras.engine.topology import Input
-from keras.engine.training import Model
-from keras.layers.convolutional import Conv2D
-from keras.layers.core import Activation, Dense, Flatten
-from keras.layers.merge import Add
-from keras.layers.normalization import BatchNormalization
-from keras.regularizers import l2
+#from tensorflow import keras
+from tensorflow.keras import Input
+from tensorflow.keras import Model
+from tensorflow.keras.layers import Conv2D
+from tensorflow.keras.layers import Activation, Dense, Flatten
+from tensorflow.keras.layers import Add
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.regularizers import l2
 
 from cchess_alphazero.agent.api import CChessModelAPI
 from cchess_alphazero.config import Config
@@ -63,7 +65,7 @@ class CChessModel:
         value_out = Dense(1, kernel_regularizer=l2(mc.l2_reg), activation="tanh", name="value_out")(x)
 
         self.model = Model(in_x, [policy_out, value_out], name="cchess_model")
-        self.graph = tf.get_default_graph()
+        self.graph = tf.compat.v1.get_default_graph()
 
     def _build_residual_block(self, x, index):
         mc = self.config.model
@@ -99,7 +101,7 @@ class CChessModel:
                 self.model = Model.from_config(json.load(f))
             self.model.load_weights(weight_path)
             self.digest = self.fetch_digest(weight_path)
-            self.graph = tf.get_default_graph()
+            self.graph = tf.compat.v1.get_default_graph()
             logger.debug(f"loaded model digest = {self.digest}")
             return True
         else:

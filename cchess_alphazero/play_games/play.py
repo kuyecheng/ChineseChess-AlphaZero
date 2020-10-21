@@ -23,7 +23,7 @@ from cchess_alphazero.config import Config
 from cchess_alphazero.environment.env import CChessEnv
 from cchess_alphazero.environment.lookup_tables import Winner, ActionLabelsRed, flip_move
 from cchess_alphazero.lib.model_helper import load_best_model_weight
-from cchess_alphazero.lib.tf_util import set_session_config
+
 
 logger = getLogger(__name__)
 main_dir = os.path.split(os.path.abspath(__file__))[0]

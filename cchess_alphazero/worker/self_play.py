@@ -21,7 +21,7 @@ from cchess_alphazero.environment.env import CChessEnv
 from cchess_alphazero.environment.lookup_tables import Winner, ActionLabelsRed, flip_policy, flip_move
 from cchess_alphazero.lib.data_helper import get_game_data_filenames, write_game_data_to_file
 from cchess_alphazero.lib.model_helper import load_model_weight, save_as_best_model, load_best_model_weight_from_internet
-from cchess_alphazero.lib.tf_util import set_session_config
+
 from cchess_alphazero.lib.web_helper import upload_file
 
 logger = getLogger(__name__)
@@ -41,12 +41,12 @@ def load_model(config, config_file=None):
             save_as_best_model(model)
             use_history = True
     except Exception as e:
-        logger.info(f"Exception {e}, 重新加载权重")
+        logger.info(f"Exception {e},load weight again")
         return load_model(config, config_file='model_192x10_config.json')
     return model, use_history
 
 def start(config: Config):
-    set_session_config(per_process_gpu_memory_fraction=1, allow_growth=True, device_list=config.opts.device_list)
+   
     current_model, use_history = load_model(config)
     m = Manager()
     cur_pipes = m.list([current_model.get_pipes() for _ in range(config.play.max_processes)])
@@ -129,7 +129,7 @@ class SelfPlayWorker:
                 break
             # if self.config.opts.log_move:
             #     logger.info(f"Process{self.pid} Playing: {turns % 2}, action: {action}, time: {(end_time - start_time):.1f}s")
-            # logger.info(f"Process{self.pid} Playing: {turns % 2}, action: {action}, time: {(end_time - start_time):.1f}s")
+            logger.info(f"Process{self.pid} Playing: {turns % 2}, action: {action}, time: {(end_time - start_time):.1f}s")
             history.append(action)
             # policys.append(policy)
             try:
@@ -153,7 +153,7 @@ class SelfPlayWorker:
                 game_over, value, final_move, check = senv.done(state, need_check=True)
                 if not game_over:
                     if not senv.has_attack_chessman(state):
-                        logger.info(f"双方无进攻子力，作和。state = {state}")
+                        logger.info(f"no fighting soldier, draw, state = {state}")
                         game_over = True
                         value = 0
                 increase_temp = False
@@ -168,10 +168,10 @@ class SelfPlayWorker:
                                 increase_temp = True
                                 free_move[state] += 1
                                 if free_move[state] >= 3:
-                                    # 作和棋处理
+                                    
                                     game_over = True
                                     value = 0
-                                    logger.info("闲着循环三次，作和棋处理")
+                                    logger.info("no play 3 times. draw")
                                     break
 
         if final_move:

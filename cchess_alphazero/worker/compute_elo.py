@@ -37,8 +37,8 @@ def start(config: Config):
     response = http_request(config.internet.get_evaluate_model_url)
     while int(response['status']) == 0:
         data = response['data']
-        logger.info(f"评测开始，基准模型：{data['base']['digest'][0:8]}, elo = {data['base']['elo']};"
-                    f"待评测模型：{data['unchecked']['digest'][0:8]}, elo = {data['unchecked']['elo']}")
+        logger.info(f"start evaluate: base model {data['base']['digest'][0:8]}, elo = {data['base']['elo']};"
+                    f"model under evalute: {data['unchecked']['digest'][0:8]}, elo = {data['unchecked']['elo']}")
         # make path
         base_weight_path = os.path.join(config.resource.next_generation_model_dir, data['base']['digest'] + '.h5')
         ng_weight_path = os.path.join(config.resource.next_generation_model_dir, data['unchecked']['digest'] + '.h5')
@@ -67,7 +67,7 @@ def start(config: Config):
         model_ng = None
 
         response = http_request(config.internet.get_evaluate_model_url)
-    logger.info(f"没有待评测权重，请稍等或继续跑谱")
+    logger.info(f"no weight under evaluate")
 
 class EvaluateWorker:
     def __init__(self, config: Config, pipes1=None, pipes2=None, pid=None, data=None, hist_base=True, hist_ng=True):
@@ -94,11 +94,11 @@ class EvaluateWorker:
             end_time = time()
             
             if (value == 1 and idx == 0) or (value == -1 and idx == 1):
-                result = '基准模型胜'
+                result = 'base model win'
             elif (value == 1 and idx == 1) or (value == -1 and idx == 0):
-                result = '待评测模型胜'
+                result = 'under evaluate win'
             else:
-                result = '和棋'
+                result = 'draw'
 
             if value == -1: # loss
                 score = 0
@@ -112,23 +112,23 @@ class EvaluateWorker:
             else:
                 score = score
 
-            logger.info(f"进程{self.pid}评测完毕 用时{(end_time - start_time):.1f}秒, "
-                         f"{turns / 2}回合, {result}, 得分：{score}, value = {value}, idx = {idx}")
+            logger.info(f"process {self.pid}finished,time {(end_time - start_time):.1f} seconds,"
+                         f"{turns / 2}rounds, {result}, score: {score}, value = {value}, idx = {idx}")
 
             response = self.save_play_data(idx, data, value, score)
             if response and int(response['status']) == 0:
-                logger.info('评测结果上传成功！')
+                logger.info('upload success')
             else:
-                logger.info(f"评测结果上传失败，服务器返回{response}")
+                logger.info(f"upload failed, return {response}")
 
             response = http_request(self.config.internet.get_evaluate_model_url)
             if int(response['status']) == 0 and response['data']['base']['digest'] == self.data['base']['digest']\
                 and response['data']['unchecked']['digest'] == self.data['unchecked']['digest']:
                 need_evaluate = True
-                logger.info(f"进程{self.pid}继续评测")
+                logger.info(f"process{self.pid} continue evaluate")
             else:
                 need_evaluate = False
-                logger.info(f"进程{self.pid}终止评测")
+                logger.info(f"process {self.pid} stop evaluate")
 
 
     def start_game(self, idx):
@@ -151,11 +151,11 @@ class EvaluateWorker:
         if idx % 2 == 0:
             red = self.player1
             black = self.player2
-            logger.info(f"进程id = {self.pid} 基准模型执红，待评测模型执黑")
+            logger.info(f"process id = {self.pid} base model red")
         else:
             red = self.player2
             black = self.player1
-            logger.info(f"进程id = {self.pid} 待评测模型执红，基准模型执黑")
+            logger.info(f"process id = {self.pid} base model black")
 
         state = senv.INIT_STATE
         history = [state]
@@ -175,9 +175,9 @@ class EvaluateWorker:
                 action, _ = black.action(state, turns, no_act=no_act, increase_temp=increase_temp)
             end_time = time()
             if self.config.opts.log_move:
-                logger.debug(f"进程id = {self.pid}, action = {action}, turns = {turns}, time = {(end_time-start_time):.1f}")
+                logger.debug(f"process id = {self.pid}, action = {action}, turns = {turns}, time = {(end_time-start_time):.1f}")
             if action is None:
-                logger.debug(f"{turns % 2} (0 = red; 1 = black) has resigned!")
+                logger.debug(f"{turns % 2} (0 = red; 1 = black) has resigned")
                 value = -1
                 break
             history.append(action)
@@ -198,7 +198,7 @@ class EvaluateWorker:
                 increase_temp = False
                 if not game_over:
                     if not senv.has_attack_chessman(state):
-                        logger.info(f"双方无进攻子力，作和。state = {state}")
+                        logger.info(f"no fighting soldier, draw state = {state}")
                         game_over = True
                         value = 0
                 if not game_over and not check and state in history[:-1]:
@@ -211,10 +211,10 @@ class EvaluateWorker:
                                 increase_temp = True
                                 free_move[state] += 1
                                 if free_move[state] >= 3:
-                                    # 作和棋处理
+                                   
                                     game_over = True
                                     value = 0
-                                    logger.info("闲着循环三次，作和棋处理")
+                                    logger.info("draw with 3 moves")
                                     break
 
         if final_move:
@@ -283,22 +283,22 @@ def load_model(config, weight_path, digest, config_file=None):
         config_path = os.path.join(config.resource.model_dir, config_file)
     logger.debug(f"config_path = {config_path}, digest = {digest}")
     if (not load_model_weight(model, config_path, weight_path)) or model.digest != digest:
-        logger.info(f"开始下载权重 {digest[0:8]}")
+        logger.info(f"start download weight {digest[0:8]}")
         url = config.internet.download_base_url + digest + '.h5'
         download_file(url, weight_path)
         try:
             if not load_model_weight(model, config_path, weight_path):
-                logger.info(f"待评测权重还未上传，请稍后再试")
+                logger.info(f"weight not uploaded")
                 sys.exit()
         except ValueError as e:
-            logger.error(f"权重架构不匹配，自动重新加载 {e}")
+            logger.error(f"weight doesn't match {e}")
             return load_model(config, weight_path, digest, 'model_192x10_config.json')
         except Exception as e:
-            logger.error(f"加载权重发生错误：{e}，10s后自动重试下载")
+            logger.error(f"load weight error {e}1 0s download again")
             os.remove(weight_path)
             sleep(10)
             return load_model(config, weight_path, digest)
-    logger.info(f"加载权重 {digest[0:8]} 成功")
+    logger.info(f"load weight {digest[0:8]} success")
     return model, use_history
 
 

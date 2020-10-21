@@ -24,7 +24,6 @@ from cchess_alphazero.environment.env import CChessEnv
 from cchess_alphazero.environment.lookup_tables import Winner, ActionLabelsRed, flip_policy, flip_move
 from cchess_alphazero.lib.data_helper import write_game_data_to_file
 from cchess_alphazero.lib.model_helper import load_model_weight
-from cchess_alphazero.lib.tf_util import set_session_config
 from cchess_alphazero.lib.web_helper import upload_file, download_file, http_request
 
 logger = getLogger(__name__)
@@ -36,7 +35,6 @@ data = None
 futures =[]
 
 def start(config: Config):
-    set_session_config(per_process_gpu_memory_fraction=1, allow_growth=True, device_list=config.opts.device_list)
     return EvaluateWorker(config).start()
 
 class EvaluateWorker:
@@ -57,11 +55,11 @@ class EvaluateWorker:
         job_done.acquire(True)
         response = http_request(self.config.internet.get_evaluate_model_url)
         if not response or int(response['status']) != 0:
-            logger.info(f"没有待评测权重，请稍等或继续跑谱")
+            logger.info(f"no weight under evaluate")
             sys.exit()
         self.data = response['data']
-        logger.info(f"评测开始，基准模型：{self.data['base']['digest'][0:8]}, elo = {self.data['base']['elo']};"
-                    f"待评测模型：{self.data['unchecked']['digest'][0:8]}")
+        logger.info(f"start evalute: base model: {self.data['base']['digest'][0:8]}, elo = {self.data['base']['elo']};"
+                    f"model under evaluate: {self.data['unchecked']['digest'][0:8]}")
         # weight path
         base_weight_path = os.path.join(self.config.resource.next_generation_model_dir, self.data['base']['digest'] + '.h5')
         ng_weight_path = os.path.join(self.config.resource.next_generation_model_dir, self.data['unchecked']['digest'] + '.h5')
@@ -96,11 +94,11 @@ class EvaluateWorker:
                 idx = rst[2]
 
                 if (value == 1 and idx == 0) or (value == -1 and idx == 1):
-                    result = '基准模型胜'
+                    result = 'base model win'
                 elif (value == 1 and idx == 1) or (value == -1 and idx == 0):
-                    result = '待评测模型胜'
+                    result = 'under evaluate win'
                 else:
-                    result = '和棋'
+                    result = 'draw'
 
                 if value == -1: # loss
                     score = 0
@@ -114,20 +112,20 @@ class EvaluateWorker:
                 else:
                     score = score
 
-                logger.info(f"评测完毕 用时{(end_time - start_time):.1f}秒, "
-                             f"{turns / 2}回合, {result}, 得分：{score}, value = {value}, idx = {idx}")
+                logger.info(f"finished, time{(end_time - start_time):.1f} seconds "
+                             f"{turns / 2}round, {result}, score: {score}, value = {value}, idx = {idx}")
 
                 response = self.save_play_data(idx, data, value, score)
                 if response and int(response['status']) == 0:
-                    logger.info('评测结果上传成功！')
+                    logger.info('upload done ')
                 else:
-                    logger.info(f"评测结果上传失败，服务器返回{response}")
+                    logger.info(f"upload failed. return {response}")
 
                 response = http_request(self.config.internet.get_evaluate_model_url)
                 if int(response['status']) == 0 and response['data']['base']['digest'] == self.data['base']['digest']\
                     and response['data']['unchecked']['digest'] == self.data['unchecked']['digest']:
                     need_evaluate = True
-                    logger.info(f"继续评测")
+                    logger.info(f"continue evaluate")
                     idx = 0 if random() > 0.5 else 1
                     ff = executor.submit(self_play_buffer, self.config, self.pipes_bt, self.pipes_ng, 
                                         idx, self.data, hist_base, hist_ng)
@@ -135,7 +133,7 @@ class EvaluateWorker:
                     futures.append(ff) # Keep it going
                 else:
                     need_evaluate = False
-                    logger.info(f"终止评测")
+                    logger.info(f"stop evaluate")
                 thr_free.release()
 
         model_base.close_pipes()
@@ -150,22 +148,22 @@ class EvaluateWorker:
         else:
             config_path = os.path.join(self.config.resource.model_dir, config_file)
         if (not load_model_weight(model, config_path, weight_path)) or model.digest != digest:
-            logger.info(f"开始下载权重 {digest[0:8]}")
+            logger.info(f"start download weight {digest[0:8]}")
             url = self.config.internet.download_base_url + digest + '.h5'
             download_file(url, weight_path)
             try:
                 if not load_model_weight(model, config_path, weight_path):
-                    logger.info(f"待评测权重还未上传，请稍后再试")
+                    logger.info(f"weight not uploaded")
                     sys.exit()
             except ValueError as e:
-                logger.error(f"权重架构不匹配，自动重新加载 {e}")
+                logger.error(f"weight don't match {e}")
                 return self.load_model(weight_path, digest, 'model_192x10_config.json')
             except Exception as e:
-                logger.error(f"加载权重发生错误：{e}，10s后自动重试下载")
+                logger.error(f"weight load error: {e}  later download again")
                 os.remove(weight_path)
                 sleep(10)
                 return self.load_model(weight_path, digest)
-        logger.info(f"加载权重 {model.digest[0:8]} 成功")
+        logger.info(f"load weight {model.digest[0:8]} success")
         return model, use_history
 
     def save_play_data(self, idx, data, value, score):
@@ -173,9 +171,9 @@ class EvaluateWorker:
         game_id = datetime.now().strftime("%Y%m%d-%H%M%S.%f")
         filename = rc.play_data_filename_tmpl % game_id
         path = os.path.join(rc.play_data_dir, filename)
-        logger.info("保存博弈数据到 %s" % (path))
+        logger.info("save data to %s" % (path))
         write_game_data_to_file(path, data)
-        logger.info(f"上传评测对局 {filename} ...")
+        logger.info(f"upload game to {filename} ...")
         red, black = data[0], data[1]
         return self.upload_eval_data(path, filename, red, black, value, score)
 
@@ -224,11 +222,11 @@ def self_play_buffer(config, pipes_bt, pipes_ng, idx, res_data, hist_base, hist_
     if idx % 2 == 0:
         red = player1
         black = player2
-        print(f"基准模型执红，待评测模型执黑")
+        print(f"base model red")
     else:
         red = player2
         black = player1
-        print(f"待评测模型执红，基准模型执黑")
+        print(f"base model black")
 
     state = senv.INIT_STATE
     history = [state]
@@ -250,10 +248,10 @@ def self_play_buffer(config, pipes_bt, pipes_ng, idx, res_data, hist_base, hist_
             action, _ = black.action(state, turns, no_act=no_act, increase_temp=increase_temp)
         end_time = time()
         if action is None:
-            print(f"{turns % 2} (0 = 红; 1 = 黑) 投降了!")
+            print(f"{turns % 2} (0 = red, 1 = black) loss")
             value = -1
             break
-        print(f"博弈中: 回合{turns / 2 + 1} {'红方走棋' if turns % 2 == 0 else '黑方走棋'}, 着法: {action}, 用时: {(end_time - start_time):.1f}s")
+        print(f"playing: round{turns / 2 + 1} {'red move' if turns % 2 == 0 else 'black move'}, method: {action}, time: {(end_time - start_time):.1f}s")
         # policys.append(policy)
         history.append(action)
         try:
@@ -279,7 +277,7 @@ def self_play_buffer(config, pipes_bt, pipes_ng, idx, res_data, hist_base, hist_
             increase_temp = False
             if not game_over:
                 if not senv.has_attack_chessman(state):
-                    logger.info(f"双方无进攻子力，作和。state = {state}")
+                    logger.info(f"draw. no soldier, state = {state}")
                     game_over = True
                     value = 0
             if not game_over and not check and state in history[:-1]:
@@ -292,10 +290,10 @@ def self_play_buffer(config, pipes_bt, pipes_ng, idx, res_data, hist_base, hist_
                             increase_temp = True
                             free_move[state] += 1
                             if free_move[state] >= 3:
-                                # 作和棋处理
+                                
                                 game_over = True
                                 value = 0
-                                logger.info("闲着循环三次，作和棋处理")
+                                logger.info("draw with 3 ")
                                 break
 
     if final_move:

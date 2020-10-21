@@ -1,5 +1,9 @@
+# -*- coding:utf-8 -*-
 from multiprocessing import connection, Pipe
 from threading import Thread
+
+import tensorflow as tf
+#tf.compat.v1.enable_eager_execution()
 
 import os
 import numpy as np
@@ -34,6 +38,7 @@ class CChessModelAPI:
         self.need_reload = need_reload
         return you
 
+    #
     def predict_batch_worker(self):
         if self.config.internet.distributed and self.need_reload:
             self.try_reload_model_from_internet()
@@ -60,8 +65,12 @@ class CChessModelAPI:
             if not data:
                 continue
             data = np.asarray(data, dtype=np.float32)
-            with self.agent_model.graph.as_default():
-                policy_ary, value_ary = self.agent_model.model.predict_on_batch(data)
+            #tf.config.experimental_run_functions_eagerly(True)
+            policy_ary, value_ary =self.get_predict_values(data)
+            #with self.agent_model.graph.as_default():
+            #with tf.Graph().as_default():
+                #self.agent_model.model.run_eagerly = True
+            #policy_ary, value_ary = self.agent_model.model.predict_on_batch(data)
             buf = []
             k, i = 0, 0
             for p, v in zip(policy_ary, value_ary):
@@ -72,7 +81,11 @@ class CChessModelAPI:
                     buf = []
                     k = 0
                     i += 1
-
+    #@tf.function
+    def get_predict_values(self,data):
+        policy_ary, value_ary = self.agent_model.model.predict_on_batch(data)
+        return policy_ary, value_ary
+        
     def try_reload_model(self, config_file=None):
         if config_file:
             config_path = os.path.join(self.config.resource.model_dir, config_file)
@@ -90,28 +103,28 @@ class CChessModelAPI:
     def try_reload_model_from_internet(self, config_file=None):
         response = http_request(self.config.internet.get_latest_digest)
         if response is None:
-            logger.error(f"无法连接到远程服务器！请检查网络连接，并重新打开客户端")
+            logger.error(f"can't connect to server")
             return
         digest = response['data']['digest']
 
         if digest != self.agent_model.fetch_digest(self.config.resource.model_best_weight_path):
-            logger.info(f"正在下载最新权重，请稍后...")
+            logger.info(f"downloading weights please wait...")
             if download_file(self.config.internet.download_url, self.config.resource.model_best_weight_path):
-                logger.info(f"权重下载完毕！开始训练...")
+                logger.info(f"finished download weights, start training...")
                 try:
                     with self.agent_model.graph.as_default():
                         load_best_model_weight(self.agent_model)
                 except ValueError as e:
-                    logger.error(f"权重架构不匹配，自动重新加载 {e}")
+                    logger.error(f"weight don't match {e}")
                     self.try_reload_model(config_file='model_192x10_config.json')
                 except Exception as e:
-                    logger.error(f"加载权重发生错误：{e}，稍后重新下载")
+                    logger.error(f"load weight error: {e},please download again")
                     os.remove(self.config.resource.model_best_weight_path)
                     self.try_reload_model_from_internet()
             else:
-                logger.error(f"权重下载失败！请检查网络连接，并重新打开客户端")
+                logger.error(f"weight download error")
         else:
-            logger.info(f"检查完毕，权重未更新")
+            logger.info(f"weight not updated")
 
     def close(self):
         self.done = True

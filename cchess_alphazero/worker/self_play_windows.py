@@ -22,7 +22,7 @@ from cchess_alphazero.environment.env import CChessEnv
 from cchess_alphazero.environment.lookup_tables import Winner, ActionLabelsRed, flip_policy, flip_move
 from cchess_alphazero.lib.data_helper import get_game_data_filenames, write_game_data_to_file
 from cchess_alphazero.lib.model_helper import load_model_weight, save_as_best_model, load_best_model_weight_from_internet
-from cchess_alphazero.lib.tf_util import set_session_config
+
 from cchess_alphazero.lib.web_helper import upload_file
 
 logger = getLogger(__name__)
@@ -34,7 +34,7 @@ data = None
 futures =[]
 
 def start(config: Config):
-    set_session_config(per_process_gpu_memory_fraction=1, allow_growth=True, device_list=config.opts.device_list)
+   
     return SelfPlayWorker(config).start()
 
 class SelfPlayWorker:
@@ -57,7 +57,7 @@ class SelfPlayWorker:
         self.buffer = []
         need_to_renew_model = True
         job_done.acquire(True)
-        logger.info(f"自我博弈开始，请耐心等待....")
+        logger.info(f"start self playing ...")
 
         with ProcessPoolExecutor(max_workers=self.config.play.max_processes) as executor:
             game_idx = 0
@@ -77,8 +77,8 @@ class SelfPlayWorker:
 
                 turns = rst[0]
                 value = rst[1]
-                logger.debug(f"对局完成：对局ID {game_idx} 耗时{(end_time - start_time):.1f} 秒, "
-                         f"{turns / 2}回合, 胜者 = {value:.2f} (1 = 红, -1 = 黑, 0 = 和)")
+                logger.debug(f"finished game, id {game_idx} time{(end_time - start_time):.1f} seconds, "
+                         f"{turns / 2}round,winner = {value:.2f} (1 = red, -1 = black, 0 = draw)")
                 self.buffer += data
 
                 if (game_idx % self.config.play_data.nb_game_in_file) == 0:
@@ -107,7 +107,7 @@ class SelfPlayWorker:
                 save_as_best_model(model)
                 use_history = True
         except Exception as e:
-            logger.info(f"Exception {e}, 重新加载权重")
+            logger.info(f"Exception {e}, load weight again")
             return self.load_model(config_file='model_192x10_config.json')
         return model, use_history
 
@@ -116,7 +116,7 @@ class SelfPlayWorker:
         game_id = datetime.now().strftime("%Y%m%d-%H%M%S.%f")
         filename = rc.play_data_filename_tmpl % game_id
         path = os.path.join(rc.play_data_dir, filename)
-        logger.info("保存博弈数据到 %s" % (path))
+        logger.info("saving data to %s" % (path))
         write_game_data_to_file(path, self.buffer)
         if self.config.internet.distributed:
             upload_worker = Thread(target=self.upload_play_data, args=(path, filename))
@@ -138,9 +138,9 @@ class SelfPlayWorker:
         data = {'digest': digest, 'username': self.config.internet.username, 'version': '2.4'}
         response = upload_file(self.config.internet.upload_url, path, filename, data, rm=False)
         if response is not None and response['status'] == 0:
-            logger.info(f"上传博弈数据 {filename} 成功.")
+            logger.info(f"upload data {filename} success")
         else:
-            logger.error(f'上传博弈数据 {filename} 失败. {response.msg if response is not None else None}')
+            logger.error(f'upload data {filename} failed. {response.msg if response is not None else None}')
 
 def recall_fn(future):
     global thr_free
@@ -182,10 +182,10 @@ def self_play_buffer(config, cur, use_history=False) -> (tuple, list):
         action, policy = player.action(state, turns, no_act, increase_temp=increase_temp)
         end_time = time()
         if action is None:
-            print(f"{turns % 2} (0 = 红; 1 = 黑) 投降了!")
+            print(f"{turns % 2} (0 = red; 1 = black) surrend")
             value = -1
             break
-        print(f"博弈中: 回合{turns / 2 + 1} {'红方走棋' if turns % 2 == 0 else '黑方走棋'}, 着法: {action}, 用时: {(end_time - start_time):.1f}s")
+        print(f"playing: round{turns / 2 + 1} {'red move' if turns % 2 == 0 else 'black move'}, method: {action}, time: {(end_time - start_time):.1f}s")
         # policys.append(policy)
         history.append(action)
         try:
@@ -211,7 +211,7 @@ def self_play_buffer(config, cur, use_history=False) -> (tuple, list):
             increase_temp = False
             if not game_over:
                 if not senv.has_attack_chessman(state):
-                    logger.info(f"双方无进攻子力，作和。state = {state}")
+                    logger.info(f"no fighting soldier. draw state = {state}")
                     game_over = True
                     value = 0
             if not game_over and not check and state in history[:-1]:
@@ -224,10 +224,10 @@ def self_play_buffer(config, cur, use_history=False) -> (tuple, list):
                             increase_temp = True
                             free_move[state] += 1
                             if free_move[state] >= 3:
-                                # 作和棋处理
+                               
                                 game_over = True
                                 value = 0
-                                logger.info("闲着循环三次，作和棋处理")
+                                logger.info("no playing 3 times, draw")
                                 break
 
     if final_move:

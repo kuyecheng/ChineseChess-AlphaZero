@@ -21,12 +21,12 @@ from cchess_alphazero.environment.env import CChessEnv
 from cchess_alphazero.environment.lookup_tables import Winner, flip_move, ActionLabelsRed
 from cchess_alphazero.lib.data_helper import get_game_data_filenames, write_game_data_to_file
 from cchess_alphazero.lib.model_helper import load_model_weight
-from cchess_alphazero.lib.tf_util import set_session_config
+
 
 logger = getLogger(__name__)
 
 def start(config: Config):
-    set_session_config(per_process_gpu_memory_fraction=1, allow_growth=True, device_list=config.opts.device_list)
+  
     m = Manager()
     # while True:
     model_bt = load_model(config, config.resource.model_best_config_path, config.resource.model_best_weight_path)
@@ -71,9 +71,9 @@ def start(config: Config):
     game_num = config.eval.game_num * config.play.max_processes
     win_rate = total_score * 100 / game_num
     logger.info(f"Evaluate over, next generation win {total_score}/{game_num} = {win_rate:.2f}%")
-    logger.info(f"红\t黑\t胜\t平\t负")
-    logger.info(f"新\t旧\t{red_new_win}\t{red_new_draw}\t{red_new_fail}")
-    logger.info(f"旧\t新\t{black_new_win}\t{black_new_draw}\t{black_new_fail}")
+    logger.info(f"red\tblack\twin\tdraw\tloss")
+    logger.info(f"new\told\t{red_new_win}\t{red_new_draw}\t{red_new_fail}")
+    logger.info(f"old\tnew\t{black_new_win}\t{black_new_draw}\t{black_new_fail}")
     # if total_score * 1.0 / game_num >= config.eval.next_generation_replace_rate:
     #     logger.info("Best model will be replaced by next generation model")
     #     replace_best_model(config)
@@ -113,19 +113,19 @@ class EvaluateWorker:
                     black_new_fail += 1
                 else:
                     red_new_fail += 1
-                result = '基准模型胜'
+                result = 'base model win'
             elif (value == 1 and idx % 2 == 1) or (value == -1 and idx % 2 == 0):
                 if idx % 2 == 0:
                     black_new_win += 1
                 else:
                     red_new_win += 1
-                result = '待评测模型胜'
+                result = 'under evaluate win'
             else:
                 if idx % 2 == 0:
                     black_new_draw += 1
                 else:
                     red_new_draw += 1
-                result = '和棋'
+                result = 'draw'
 
             if value == -1: # loss
                 score = 0
@@ -139,8 +139,8 @@ class EvaluateWorker:
             else:
                 score = score
 
-            logger.info(f"进程{self.pid}评测完毕 用时{(end_time - start_time):.1f}秒, "
-                         f"{turns / 2}回合, {result}, 得分：{score}, value = {value}, idx = {idx}")
+            logger.info(f"process{self.pid}finished time {(end_time - start_time):.1f} seconds, "
+                         f"{turns / 2}round, {result},score: {score}, value = {value}, idx = {idx}")
             total_score += score
         return (total_score, red_new_win, red_new_draw, red_new_fail, black_new_win, black_new_draw, black_new_fail)
 
@@ -187,17 +187,17 @@ class EvaluateWorker:
                 free_move = defaultdict(int)
                 for i in range(len(history) - 1):
                     if history[i] == state:
-                        # 如果走了下一步是将军或捉：禁止走那步
+                        
                         if senv.will_check_or_catch(state, history[i+1]):
                             no_act.append(history[i + 1])
-                        # 否则当作闲着处理
+                        
                         else:
                             free_move[state] += 1
                             if free_move[state] >= 3:
-                                # 作和棋处理
+                               
                                 game_over = True
                                 value = 0
-                                logger.info("闲着循环三次，作和棋处理")
+                                logger.info("draw with no playing 3 times")
                                 break
             if game_over:
                 break
@@ -207,7 +207,7 @@ class EvaluateWorker:
                 action, _ = black.action(state, turns, no_act=no_act, increase_temp=increase_temp)
             end_time = time()
             if self.config.opts.log_move:
-                logger.debug(f"进程id = {self.pid}, action = {action}, turns = {turns}, time = {(end_time-start_time):.1f}")
+                logger.debug(f"process id = {self.pid}, action = {action}, turns = {turns}, time = {(end_time-start_time):.1f}")
             if action is None:
                 logger.debug(f"{turns % 2} (0 = red; 1 = black) has resigned!")
                 value = -1
@@ -228,7 +228,7 @@ class EvaluateWorker:
                 game_over, value, final_move, check = senv.done(state, need_check=True)
                 if not game_over:
                     if not senv.has_attack_chessman(state):
-                        logger.info(f"双方无进攻子力，作和。state = {state}")
+                        logger.info(f"no fighting soldier,draw state = {state}")
                         game_over = True
                         value = 0
 

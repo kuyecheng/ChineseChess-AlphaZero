@@ -17,17 +17,15 @@ from cchess_alphazero.lib.data_helper import get_game_data_filenames, read_game_
 from cchess_alphazero.lib.model_helper import load_sl_best_model_weight, save_as_sl_best_model
 from cchess_alphazero.environment.env import CChessEnv
 from cchess_alphazero.environment.lookup_tables import ActionLabelsRed, flip_policy, flip_move
-from cchess_alphazero.lib.tf_util import set_session_config
 from cchess_alphazero.environment.lookup_tables import Winner
 
-from keras.optimizers import Adam
-from keras.callbacks import TensorBoard
-import keras.backend as K
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import TensorBoard
+import tensorflow.keras.backend as K
 
 logger = getLogger(__name__)
 
 def start(config: Config, skip):
-    set_session_config(per_process_gpu_memory_fraction=1, allow_growth=True, device_list=config.opts.device_list)
     return SupervisedWorker(config).start(skip)
 
 class SupervisedWorker:
@@ -117,9 +115,9 @@ class SupervisedWorker:
             init = game['init']
             move_list = game['move_list']
             winner = Winner.draw
-            if game['result'] == '红胜' or '胜' in game['title']:
+            if game['result'] == 'red win' or 'win' in game['title']:
                 winner = Winner.red
-            elif game['result'] == '黑胜' or '负' in game['title']:
+            elif game['result'] == 'black win' or 'loss' in game['title']:
                 winner = Winner.black
             else:
                 winner = Winner.draw
